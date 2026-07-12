@@ -79,6 +79,10 @@ class ProjectDatabase:
         source are captured. Original application/collection dates are
         preserved, and coordinates are never overwritten with NULL.
 
+        Rows are only touched when a value actually differs, so
+        updated_at reliably means "data last changed" and unchanged
+        rows don't churn exports.
+
         Args:
             projects: List of project dictionaries
             source: Data source identifier
@@ -111,6 +115,16 @@ class ProjectDatabase:
                             url = excluded.url,
                             raw_data = excluded.raw_data,
                             updated_at = CURRENT_TIMESTAMP
+                        WHERE name IS NOT excluded.name
+                           OR description IS NOT excluded.description
+                           OR status IS NOT excluded.status
+                           OR address IS NOT excluded.address
+                           OR url IS NOT excluded.url
+                           OR raw_data IS NOT excluded.raw_data
+                           OR (excluded.latitude IS NOT NULL
+                               AND latitude IS NOT excluded.latitude)
+                           OR (excluded.longitude IS NOT NULL
+                               AND longitude IS NOT excluded.longitude)
                     """, (
                         source,
                         project.get('project_id'),

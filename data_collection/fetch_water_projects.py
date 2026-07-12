@@ -109,19 +109,30 @@ class WaterProjectsFetcher:
         for field in data["fields"]:
             field_dict[field['name']] = field["alias"]
         
-        projects = []
+        # The layer occasionally contains duplicate features for one
+        # PROJ_ID; keep the newest per ID so results are deterministic
+        projects_by_id: Dict[str, Dict[str, Any]] = {}
+        feature_rank: Dict[str, tuple] = {}
         collection_date = datetime.now().date()
-        
+
         for feature in data["features"]:
             try:
                 attributes = feature.get("attributes", {})
                 centroid = feature.get("centroid", {})
-                
+
                 project_id = attributes.get("PROJ_ID", "")
-                
+
                 # Skip residential projects
                 if project_id.startswith('RSAN'):
                     continue
+
+                rank = (
+                    attributes.get("last_edited_date") or 0,
+                    attributes.get("OBJECTID") or 0
+                )
+                if rank <= feature_rank.get(project_id, (-1, -1)):
+                    continue
+                feature_rank[project_id] = rank
                 
                 # Extract coordinates from centroid
                 latitude = centroid.get("y")
@@ -163,14 +174,14 @@ class WaterProjectsFetcher:
                         "field_mapping": field_dict
                     }
                 }
-                
-                projects.append(project)
-                
+
+                projects_by_id[project_id] = project
+
             except Exception as e:
                 logger.error(f"Error parsing water project: {e}")
                 continue
-        
-        return projects
+
+        return list(projects_by_id.values())
     
     def fetch_and_store(self, db: ProjectDatabase) -> int:
         """

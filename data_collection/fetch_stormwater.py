@@ -252,6 +252,28 @@ class StormwaterFetcher:
         return (None, None)
 
     @staticmethod
+    def build_project_id(clean_row: Dict[str, Any]) -> str:
+        """
+        Build a stable project ID from a cleaned table row.
+
+        Includes the town's project number because multiple notices can
+        share a location and open date (e.g. three projects on one
+        parcel noticed the same day).
+
+        Args:
+            clean_row: Row dict with cleaned column names
+
+        Returns:
+            Sanitized project ID string
+        """
+        loc_part = clean_row.get('Location', '')[:20]
+        date_part = clean_row.get('OpenDate', '')
+        number_part = clean_row.get('ProjectNumber', '')
+        return re.sub(
+            r'[^\w\-_]', '_', f"{loc_part}_{date_part}_{number_part}"
+        )
+
+    @staticmethod
     def _parse_table_date(value: str) -> Optional[date]:
         """Parse a m/d/yyyy table date, returning None on failure."""
         value = DATE_CORRECTIONS.get(value, value)
@@ -306,12 +328,8 @@ class StormwaterFetcher:
                     clean_row.get('CloseDate', '')
                 )
 
-                # Generate project ID from location/date
                 location = clean_row.get('Location', '')
-                loc_part = location[:20]
-                date_part = clean_row.get('OpenDate', '')
-                project_id = f"{loc_part}_{date_part}"
-                project_id = re.sub(r'[^\w\-_]', '_', project_id)
+                project_id = self.build_project_id(clean_row)
 
                 # Look up coordinates from TMS (new projects only)
                 latitude, longitude = (None, None)

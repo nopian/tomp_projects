@@ -10,6 +10,10 @@ Fixes applied:
 2. Stormwater rows stored with the old placeholder coordinates
    (32.530988, -79.195347 — a point in the Atlantic Ocean): re-look-up
    real coordinates from the TMS parcel ID, or NULL them out.
+3. Stormwater project IDs: migrate from the old location+date scheme
+   (which collapsed distinct projects noticed on the same parcel and
+   day) to the location+date+project-number scheme. IDs are
+   recomputed from stored raw_data.
 
 Safe to re-run; rows already repaired are simply rewritten with the
 same values.
@@ -131,6 +135,56 @@ def repair_stormwater_coords(db: ProjectDatabase) -> int:
     return updated
 
 
+def migrate_stormwater_ids(db: ProjectDatabase) -> int:
+    """
+    Migrate stormwater project IDs to include the project number.
+
+    Args:
+        db: Database instance
+
+    Returns:
+        Number of rows migrated
+    """
+    fetcher = StormwaterFetcher()
+    migrated = 0
+
+    with sqlite3.connect(db.db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, project_id, raw_data FROM projects
+            WHERE source = 'stormwater'
+        """).fetchall()
+
+        for row in rows:
+            try:
+                raw = json.loads(row["raw_data"])
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"Row {row['id']}: unparseable raw_data")
+                continue
+
+            new_id = fetcher.build_project_id(raw)
+            if new_id == row["project_id"]:
+                continue
+
+            try:
+                conn.execute("""
+                    UPDATE projects
+                    SET project_id = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (new_id, row["id"]))
+                migrated += 1
+            except sqlite3.IntegrityError:
+                # Another row already carries the new ID: this row is a
+                # duplicate of the same notice, so drop it.
+                logger.info(f"Row {row['id']} duplicates {new_id}; deleting")
+                conn.execute(
+                    "DELETE FROM projects WHERE id = ?", (row["id"],)
+                )
+
+    logger.info(f"Migrated {migrated} stormwater project IDs")
+    return migrated
+
+
 def main() -> None:
     """Run all data repairs."""
     logging.basicConfig(
@@ -141,9 +195,11 @@ def main() -> None:
     db = ProjectDatabase()
     dhec_count = repair_dhec_rows(db)
     stormwater_count = repair_stormwater_coords(db)
+    migrated_count = migrate_stormwater_ids(db)
 
     print(f"Repaired {dhec_count} DHEC rows, "
-          f"{stormwater_count} stormwater rows")
+          f"{stormwater_count} stormwater coordinate rows; "
+          f"migrated {migrated_count} stormwater IDs")
 
 
 if __name__ == "__main__":
