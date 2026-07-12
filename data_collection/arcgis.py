@@ -6,6 +6,8 @@ from typing import Dict, Any
 
 import requests
 
+from data_collection.http_session import create_session
+
 logger = logging.getLogger(__name__)
 
 # Safety cap on pagination loops
@@ -38,13 +40,14 @@ def fetch_all_arcgis_pages(
     """
     merged: Dict[str, Any] = {}
     offset = 0
+    session = create_session()
 
     for _ in range(MAX_PAGES):
         page_params = dict(params)
         page_params["resultRecordCount"] = str(page_size)
         page_params["resultOffset"] = str(offset)
 
-        response = requests.get(
+        response = session.get(
             url, params=page_params, headers=headers, timeout=timeout
         )
         response.raise_for_status()

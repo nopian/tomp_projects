@@ -11,6 +11,7 @@ import pandas as pd
 from bs4 import BeautifulSoup
 
 from data_collection.database import ProjectDatabase
+from data_collection.http_session import create_session
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class StormwaterFetcher:
         )
         self.headers = {'User-Agent': USER_AGENT}
         self.source = "stormwater"
+        self.session = create_session()
         # Cache TMS lookups within a run (same parcel can appear twice)
         self._coord_cache: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
 
@@ -105,7 +107,7 @@ class StormwaterFetcher:
             requests.RequestException: If website request fails
             ValueError: If the notice table cannot be found
         """
-        response = requests.get(
+        response = self.session.get(
             self.notice_url,
             headers=self.headers,
             timeout=DEFAULT_TIMEOUT
@@ -196,7 +198,7 @@ class StormwaterFetcher:
             "f": "pjson"
         }
 
-        response = requests.get(
+        response = self.session.get(
             self.parcel_api_url,
             params=params,
             headers=self.headers,

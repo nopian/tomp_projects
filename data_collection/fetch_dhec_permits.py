@@ -11,6 +11,7 @@ from datetime import date, datetime
 from typing import List, Dict, Any, Optional
 
 from data_collection.database import ProjectDatabase
+from data_collection.http_session import create_session
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class DHECPermitsFetcher:
         )
         self.headers = {'User-Agent': USER_AGENT}
         self.source = "dhec"
+        self.session = create_session()
     
     def fetch_data(self) -> Dict[str, Any]:
         """
@@ -54,7 +56,7 @@ class DHECPermitsFetcher:
             requests.RequestException: If API request fails
         """
         try:
-            response = requests.get(
+            response = self.session.get(
                 self.url,
                 headers=self.headers,
                 timeout=DEFAULT_TIMEOUT
