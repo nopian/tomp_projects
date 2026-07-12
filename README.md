@@ -92,7 +92,20 @@ GitHub Actions automatically runs data collection daily at 6 AM UTC. The workflo
 
 ### GeoJSON Export
 
-For integrating the data into another map, use the GeoJSON export:
+The data is published via GitHub Pages (rebuilt automatically on every
+push, including the nightly data updates) and can be consumed directly
+by external maps:
+
+```
+https://nopian.github.io/tomp_projects/data/projects.geojson
+```
+
+Served with `Content-Type: application/geo+json` and
+`Access-Control-Allow-Origin: *`, so it can be fetched from any web
+app (Leaflet, MapLibre, Mapbox GL, etc.). The CDN caches for ~10
+minutes.
+
+To regenerate the file locally:
 ```bash
 python scripts/export_geojson.py
 ```
