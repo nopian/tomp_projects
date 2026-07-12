@@ -9,10 +9,11 @@ A Streamlit dashboard that aggregates and displays development projects in Mount
 - **Real-time Updates**: Automated daily data collection via GitHub Actions
 - **Multiple Sources**: Aggregates data from:
   - Town Planning Council (ArcGIS)
-  - SC DHEC Environmental Permits
+  - SC DES Environmental Permits (formerly DHEC)
   - Stormwater Projects
   - Mount Pleasant Water Projects
-  - Charleston New Construction (bonus)
+- **GeoJSON Export**: `data/projects.geojson` regenerated on every
+  collection run for easy integration with external maps
 
 ## Quick Start
 
@@ -84,9 +85,30 @@ python update_database.py status
 
 GitHub Actions automatically runs data collection daily at 6 AM UTC. The workflow:
 1. Fetches data from all sources
-2. Updates the SQLite database
-3. Commits changes back to the repository
-4. Provides a summary of the collection run
+2. Updates the SQLite database (new rows inserted, existing rows refreshed)
+3. Regenerates `data/projects.geojson`
+4. Commits changes back to the repository
+5. Provides a summary of the collection run
+
+### GeoJSON Export
+
+For integrating the data into another map, use the GeoJSON export:
+```bash
+python scripts/export_geojson.py
+```
+This writes `data/projects.geojson` with one Point feature per project
+that has coordinates. Feature properties carry the standardized fields
+(`source`, `project_id`, `name`, `description`, `status`, `address`,
+`application_date`, `collection_date`, `url`, `updated_at`).
+
+### Data Repairs
+
+`scripts/repair_data.py` is an idempotent repair pass for historical
+rows (rebuilds DHEC-era records from raw data, clears old placeholder
+coordinates). Run it manually if needed:
+```bash
+python scripts/repair_data.py
+```
 
 ## Project Structure
 
@@ -103,10 +125,15 @@ project/
 ├── dashboard/
 │   └── app.py               # Streamlit dashboard
 ├── data/
-│   └── projects.db          # SQLite database
+│   ├── projects.db          # SQLite database
+│   └── projects.geojson     # GeoJSON export for map integration
+├── scripts/
+│   ├── export_geojson.py    # Regenerate data/projects.geojson
+│   ├── repair_data.py       # Idempotent historical data repairs
+│   ├── generate_summary.py  # GitHub Actions step summary
+│   └── generate_commit_message.py
 ├── .github/workflows/
 │   └── update_data.yml      # GitHub Actions workflow
-├── REFERENCE/               # Original reference scripts
 ├── requirements.txt         # Data collection dependencies
 ├── requirements-dashboard.txt # Dashboard dependencies
 └── .env.example            # Environment variables template
@@ -138,22 +165,28 @@ The system uses SQLite with two main tables:
 ### Planning Council
 - **Source**: Mount Pleasant Planning Council ArcGIS
 - **Data**: Development projects with planning approvals
-- **Updates**: New projects added when discovered
+- **Status**: `Active` while on the agenda feed; automatically marked
+  `Archived` once an item leaves the feed (decided or withdrawn)
 
-### DHEC Permits
-- **Source**: SC DHEC Environmental Permits API
-- **Data**: Environmental approvals for Mount Pleasant
+### DHEC/DES Permits
+- **Source**: SC DES public notices API (`epermitting.des.sc.gov`;
+  DHEC's environmental programs moved to DES in 2024)
+- **Data**: Environmental permit public notices for Mount Pleasant
 - **Filtering**: Excludes private residences
 
 ### Stormwater Projects
 - **Source**: Mount Pleasant construction notices website
-- **Data**: Stormwater management projects
-- **Coordinates**: Looked up via TMS parcel ID
+- **Data**: Stormwater management projects (NOI public notices)
+- **Coordinates**: Parcel centroid looked up via TMS parcel ID; left
+  empty when the parcel no longer exists (e.g. replatted) or the
+  location is a right-of-way
+- **Status**: `Comment Period Open`/`Comment Period Closed`, derived
+  from the notice close date
 
 ### Water Projects
 - **Source**: Mount Pleasant Water ArcGIS
 - **Data**: Water infrastructure projects
-- **Filtering**: Excludes residential projects
+- **Filtering**: Excludes residential projects (RSAN* project IDs)
 
 ## Development
 
@@ -189,10 +222,18 @@ All data sources must convert their data to this format:
 ### Date Handling
 
 **Application Date Logic:**
-- **Sources with real application dates**: Water Projects, Stormwater (use actual submission dates)
-- **Sources without application dates**: Planning Council, DHEC (use collection date as fallback)
+- **Sources with real dates**: Water Projects (GIS record creation),
+  Stormwater (notice open date), DHEC/DES (notice start date)
+- **Sources without application dates**: Planning Council (uses the
+  date the item was first collected)
 
-This ensures all projects appear in date range filters while maintaining accuracy where real dates exist.
+### Update Semantics
+
+Collection runs upsert: new `(source, project_id)` pairs are inserted,
+existing rows have their name/description/status/address/coordinates/
+url/raw_data refreshed so status changes at the source are captured.
+Original application and collection dates are preserved, and
+coordinates are never overwritten with NULL.
 
 ## Troubleshooting
 

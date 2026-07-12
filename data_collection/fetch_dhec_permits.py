@@ -1,10 +1,14 @@
 """
-Fetch environmental permits from SC DHEC public notices.
+Fetch environmental permits from SC DES (formerly DHEC) public notices.
+
+SC DHEC's environmental programs moved to the SC Department of
+Environmental Services (DES) in 2024; the old epermweb.dhec.sc.gov
+endpoint now redirects to epermitting.des.sc.gov.
 """
 import requests
 import logging
-from datetime import datetime
-from typing import List, Dict, Any
+from datetime import date, datetime
+from typing import List, Dict, Any, Optional
 
 from data_collection.database import ProjectDatabase
 
@@ -13,6 +17,7 @@ logger = logging.getLogger(__name__)
 # API Configuration
 DEFAULT_TIMEOUT = 30
 MILLISECONDS_PER_SECOND = 1000
+ISO_DATE_LENGTH = 10  # 'YYYY-MM-DD' prefix of ISO timestamps
 
 # User agent for API requests
 USER_AGENT = (
@@ -20,13 +25,18 @@ USER_AGENT = (
     '(KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
 )
 
+# The retired DHEC domain redirects here (with an expired certificate,
+# so browsers never reach the redirect); rewrite URLs proactively
+OLD_DOMAIN_PREFIX = "https://epermweb.dhec.sc.gov/"
+NEW_DOMAIN_PREFIX = "https://epermitting.des.sc.gov/ext/"
+
 
 class DHECPermitsFetcher:
-    """Fetches environmental permits from SC DHEC public notices API."""
+    """Fetches environmental permits from SC DES public notices API."""
 
     def __init__(self):
         self.url = (
-            "https://epermweb.dhec.sc.gov/ncore/ss/publicnoticeslist?"
+            "https://epermitting.des.sc.gov/ext/ncore/ss/publicnoticeslist?"
             "includeMetadataInResponse=false&loadChildren=false&"
             "queryParams=%7B%22filter%22:%5B%7B%7D%5D%7D"
         )
@@ -55,77 +65,120 @@ class DHECPermitsFetcher:
             logger.error(f"Failed to fetch DHEC data: {e}")
             raise
     
+    def _parse_notice_date(self, result: Dict[str, Any]) -> Optional[date]:
+        """
+        Parse the public notice date from an API record.
+
+        Prefers the ISO `startDate` (notice start); falls back to the
+        legacy `applicationDate` millisecond timestamp if present.
+
+        Args:
+            result: Single record from the API response
+
+        Returns:
+            Parsed date, or None if no usable date found
+        """
+        start_date = result.get("startDate")
+        if start_date:
+            try:
+                return date.fromisoformat(str(start_date)[:ISO_DATE_LENGTH])
+            except ValueError:
+                pass
+
+        if result.get("applicationDate"):
+            try:
+                timestamp = int(result["applicationDate"])
+                timestamp = timestamp / MILLISECONDS_PER_SECOND
+                return datetime.fromtimestamp(timestamp).date()
+            except (ValueError, TypeError):
+                pass
+
+        return None
+
+    def _build_notice_url(self, result: Dict[str, Any]) -> Optional[str]:
+        """
+        Build the public-facing URL for a notice record.
+
+        Args:
+            result: Single record from the API response
+
+        Returns:
+            URL string, or None if no identifier available
+        """
+        site_url = result.get("siteProfileUrl")
+        if site_url:
+            return site_url.replace(OLD_DOMAIN_PREFIX, NEW_DOMAIN_PREFIX)
+
+        permit_id = result.get("id")
+        if permit_id:
+            return (
+                f"https://epermitting.des.sc.gov/ext/ncore/external/"
+                f"publicnotice/info/{permit_id}/details"
+            )
+        return None
+
     def parse_projects(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Parse raw API data into standardized project format.
-        
+
         Args:
             data: Raw API response data
-            
+
         Returns:
             List of standardized project dictionaries
         """
         if "queryResults" not in data:
             logger.warning("Invalid data structure from DHEC API")
             return []
-        
+
         projects = []
         collection_date = datetime.now().date()
-        
+
         for result in data["queryResults"]:
             try:
                 # Filter for Mount Pleasant projects only
                 city = result.get("city", "")
                 if not city or "pleasant" not in city.lower():
                     continue
-                
+
                 # Skip private residences
                 comments = result.get("comments", "")
                 if comments.startswith("PRIVATE"):
                     continue
-                
-                # Parse application date
-                application_date = None
-                if result.get("applicationDate"):
-                    try:
-                        # DHEC dates are in milliseconds timestamp format
-                        timestamp = int(result["applicationDate"])
-                        timestamp = timestamp / MILLISECONDS_PER_SECOND
-                        application_date = datetime.fromtimestamp(
-                            timestamp
-                        ).date()
-                    except (ValueError, TypeError):
-                        pass
-                
-                # Build project record
-                permit_id = result.get('id')
-                url = None
-                if permit_id:
-                    url = (
-                        f"https://epermweb.dhec.sc.gov/ncore/external/"
-                        f"publicnotice/info/{permit_id}/details"
-                    )
+
+                application_date = self._parse_notice_date(result)
+
+                name = (
+                    result.get("siteName")
+                    or result.get("programAreaDescription")
+                    or "DES Public Notice"
+                )
+                status = result.get("publicNotificationTypeDescription", "")
+                program_area = result.get("programAreaDescription", "")
+                description = " — ".join(
+                    part for part in (program_area, comments) if part
+                )
 
                 project = {
                     "project_id": str(result.get("id", "")),
-                    "name": result.get("permitType", "") or "DHEC Permit",
-                    "description": comments or result.get("permitType", ""),
-                    "status": result.get("status", ""),
+                    "name": name,
+                    "description": description,
+                    "status": status,
                     "address": result.get("address1", ""),
                     "application_date": application_date or collection_date,
                     "collection_date": collection_date,
                     "latitude": result.get("latitude"),
                     "longitude": result.get("longitude"),
-                    "url": url,
+                    "url": self._build_notice_url(result),
                     "raw_data": result
                 }
-                
+
                 projects.append(project)
-                
+
             except Exception as e:
                 logger.error(f"Error parsing DHEC permit: {e}")
                 continue
-        
+
         return projects
     
     def fetch_and_store(self, db: ProjectDatabase) -> int:
@@ -137,6 +190,9 @@ class DHECPermitsFetcher:
             
         Returns:
             Number of new projects added
+
+        Raises:
+            Exception: If collection fails (the failed run is logged first)
         """
         try:
             logger.info("Fetching DHEC permits data...")
@@ -144,18 +200,9 @@ class DHECPermitsFetcher:
             
             logger.info("Parsing DHEC permits...")
             projects = self.parse_projects(raw_data)
-            
-            # Filter out existing projects
-            existing_ids = db.get_existing_project_ids(self.source)
-            new_projects = [
-                p for p in projects 
-                if p["project_id"] not in existing_ids
-            ]
-            
-            logger.info(f"Found {len(new_projects)} new DHEC permits")
-            
-            # Insert new projects
-            added_count = db.insert_projects(new_projects, self.source)
+
+            # Insert new permits and refresh existing ones
+            added_count = db.insert_projects(projects, self.source)
             
             # Log collection run
             db.log_collection_run(self.source, True, added_count)
@@ -167,7 +214,7 @@ class DHECPermitsFetcher:
             error_msg = f"DHEC collection failed: {e}"
             logger.error(error_msg)
             db.log_collection_run(self.source, False, 0, error_msg)
-            return 0
+            raise
 
 
 def main():

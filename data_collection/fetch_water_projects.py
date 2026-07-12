@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any
 
+from data_collection.arcgis import fetch_all_arcgis_pages
 from data_collection.database import ProjectDatabase
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,6 @@ class WaterProjectsFetcher:
             "returnGeometry": "true",
             "outSR": COORDINATE_SYSTEM,
             "returnCentroid": "true",
-            "resultRecordCount": str(MAX_RESULT_COUNT),
             "f": "pjson"
         }
         self.headers = {'User-Agent': USER_AGENT}
@@ -45,27 +45,51 @@ class WaterProjectsFetcher:
     
     def fetch_data(self) -> Dict[str, Any]:
         """
-        Fetch raw data from Mount Pleasant Water API.
-        
+        Fetch raw data from Mount Pleasant Water API, paginating as needed.
+
         Returns:
-            Raw API response data
-            
+            Raw API response data with all pages of features merged
+
         Raises:
             requests.RequestException: If API request fails
         """
         try:
-            response = requests.get(
+            return fetch_all_arcgis_pages(
                 self.url,
-                params=self.params,
-                headers=self.headers,
+                self.params,
+                self.headers,
+                page_size=MAX_RESULT_COUNT,
                 timeout=DEFAULT_TIMEOUT
             )
-            response.raise_for_status()
-            return response.json()
         except requests.RequestException as e:
             logger.error(f"Failed to fetch water projects data: {e}")
             raise
     
+    @staticmethod
+    def _build_description(attributes: Dict[str, Any]) -> str:
+        """
+        Build a human-readable description for a water project.
+
+        Uses the source's WebsiteDesc when meaningful; otherwise builds
+        one from the project type and acreage (WebsiteDesc is often
+        empty or just a "cc: <email>" note).
+
+        Args:
+            attributes: Feature attributes from the API
+
+        Returns:
+            Description string
+        """
+        description = (attributes.get("WebsiteDesc") or "").strip()
+        if description and not description.lower().startswith("cc:"):
+            return description
+
+        parts = ["Mount Pleasant Waterworks developer project"]
+        acreage = attributes.get("ACREAGE")
+        if isinstance(acreage, (int, float)) and acreage > 0:
+            parts.append(f"{acreage:.1f} acres")
+        return " — ".join(parts)
+
     def parse_projects(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Parse raw API data into standardized project format.
@@ -125,7 +149,7 @@ class WaterProjectsFetcher:
                 project = {
                     "project_id": str(project_id),
                     "name": attributes.get("PROJECTNAME", ""),
-                    "description": attributes.get("WebsiteDesc", ""),
+                    "description": self._build_description(attributes),
                     "status": status,
                     "address": attributes.get("PROJ_ADDR", ""),
                     "application_date": application_date or collection_date,
@@ -157,6 +181,9 @@ class WaterProjectsFetcher:
             
         Returns:
             Number of new projects added
+
+        Raises:
+            Exception: If collection fails (the failed run is logged first)
         """
         try:
             logger.info("Fetching water projects data...")
@@ -164,18 +191,10 @@ class WaterProjectsFetcher:
             
             logger.info("Parsing water projects...")
             projects = self.parse_projects(raw_data)
-            
-            # Filter out existing projects
-            existing_ids = db.get_existing_project_ids(self.source)
-            new_projects = [
-                p for p in projects 
-                if p["project_id"] not in existing_ids
-            ]
-            
-            logger.info(f"Found {len(new_projects)} new water projects")
-            
-            # Insert new projects
-            added_count = db.insert_projects(new_projects, self.source)
+
+            # Insert new projects and refresh existing ones
+            # (water project status/phase changes over time)
+            added_count = db.insert_projects(projects, self.source)
             
             # Log collection run
             db.log_collection_run(self.source, True, added_count)
@@ -187,7 +206,7 @@ class WaterProjectsFetcher:
             error_msg = f"Water projects collection failed: {e}"
             logger.error(error_msg)
             db.log_collection_run(self.source, False, 0, error_msg)
-            return 0
+            raise
 
 
 def main():

@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any
 
+from data_collection.arcgis import fetch_all_arcgis_pages
 from data_collection.database import ProjectDatabase
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,6 @@ class PlanningCouncilFetcher:
             "outFields": "*",
             "returnGeometry": "true",
             "outSR": COORDINATE_SYSTEM,
-            "resultRecordCount": str(MAX_RESULT_COUNT),
             "f": "pjson"
         }
         self.headers = {'User-Agent': USER_AGENT}
@@ -43,23 +43,22 @@ class PlanningCouncilFetcher:
     
     def fetch_data(self) -> Dict[str, Any]:
         """
-        Fetch raw data from Planning Council API.
-        
+        Fetch raw data from Planning Council API, paginating as needed.
+
         Returns:
-            Raw API response data
-            
+            Raw API response data with all pages of features merged
+
         Raises:
             requests.RequestException: If API request fails
         """
         try:
-            response = requests.get(
+            return fetch_all_arcgis_pages(
                 self.url,
-                params=self.params,
-                headers=self.headers,
+                self.params,
+                self.headers,
+                page_size=MAX_RESULT_COUNT,
                 timeout=DEFAULT_TIMEOUT
             )
-            response.raise_for_status()
-            return response.json()
         except requests.RequestException as e:
             logger.error(f"Failed to fetch planning council data: {e}")
             raise
@@ -135,6 +134,9 @@ class PlanningCouncilFetcher:
             
         Returns:
             Number of new projects added
+
+        Raises:
+            Exception: If collection fails (the failed run is logged first)
         """
         try:
             logger.info("Fetching planning council data...")
@@ -142,19 +144,17 @@ class PlanningCouncilFetcher:
             
             logger.info("Parsing planning council projects...")
             projects = self.parse_projects(raw_data)
-            
-            # Filter out existing projects
-            existing_ids = db.get_existing_project_ids(self.source)
-            new_projects = [
-                p for p in projects 
-                if p["project_id"] not in existing_ids
-            ]
-            
-            logger.info(f"Found {len(new_projects)} new planning council projects")
-            
-            # Insert new projects
-            added_count = db.insert_projects(new_projects, self.source)
-            
+
+            # Insert new projects and refresh existing ones
+            added_count = db.insert_projects(projects, self.source)
+
+            # Items that left the agenda feed were decided or withdrawn
+            active_ids = [p["project_id"] for p in projects]
+            archived = db.mark_inactive_projects(self.source, active_ids)
+            if archived:
+                logger.info(f"Archived {archived} planning council projects "
+                            "no longer on the agenda")
+
             # Log collection run
             db.log_collection_run(self.source, True, added_count)
             
@@ -165,7 +165,7 @@ class PlanningCouncilFetcher:
             error_msg = f"Planning council collection failed: {e}"
             logger.error(error_msg)
             db.log_collection_run(self.source, False, 0, error_msg)
-            return 0
+            raise
 
 
 def main():

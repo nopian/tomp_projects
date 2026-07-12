@@ -9,12 +9,10 @@ import sys
 import os
 from pathlib import Path
 
-# Add data_collection to path
-script_dir = Path(__file__).parent
-project_root = script_dir.parent
-sys.path.append(str(project_root / "data_collection"))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-from database import ProjectDatabase
+from data_collection.database import ProjectDatabase
 
 
 def main() -> None:

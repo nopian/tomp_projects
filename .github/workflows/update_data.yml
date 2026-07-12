@@ -9,61 +9,50 @@ on:
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
-    
+        python-version: '3.12'
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    
-    - name: Create data directory
-      run: mkdir -p data
-    
+
+    # Exits non-zero if any source fails, turning the run red so
+    # failures get noticed. Successful sources still update the
+    # database, and the steps below still commit their data.
     - name: Update projects database
       run: python -m data_collection.update_database
-    
-    - name: Check for database changes
-      id: changes
-      run: |
-        if [ -f data/projects.db ]; then
-          echo "database_exists=true" >> $GITHUB_OUTPUT
-          if git diff --quiet data/projects.db; then
-            echo "database_changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "database_changed=true" >> $GITHUB_OUTPUT
-          fi
-        else
-          echo "database_exists=false" >> $GITHUB_OUTPUT
-          echo "database_changed=false" >> $GITHUB_OUTPUT
-        fi
-    
+
+    - name: Export GeoJSON
+      if: always()
+      run: python scripts/export_geojson.py
+
+    - name: Generate run summary
+      if: always()
+      run: python scripts/generate_summary.py >> $GITHUB_STEP_SUMMARY
+
     - name: Commit and push changes
-      if: steps.changes.outputs.database_exists == 'true'
+      if: always()
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add data/projects.db
+        git add data/projects.db data/projects.geojson
 
         # Only commit if there are changes
         if ! git diff --cached --quiet; then
-          git commit -m "🤖 Automated data update
-
-          🤖 Generated with Claude Code
-
-          Co-Authored-By: Claude <noreply@anthropic.com>"
+          COMMIT_MSG=$(python scripts/generate_commit_message.py 2>/dev/null || echo "Automated data update")
+          git commit -m "🤖 ${COMMIT_MSG}"
           git push
         else
-          echo "No database changes to commit"
+          echo "No data changes to commit"
         fi

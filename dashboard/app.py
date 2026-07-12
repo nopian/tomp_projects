@@ -234,14 +234,15 @@ def render_header() -> None:
     with st.expander("ℹ️ Data Source Information"):
         st.markdown("""
         **Application Dates:**
-        - **Water Projects & Stormwater**: Use actual project dates
-        - **Planning Council & DHEC**: Use collection date as fallback
+        - **Water, Stormwater & DHEC/DES**: Use actual project dates
+        - **Planning Council**: Uses date first collected
 
         **Data Sources:**
         - **Planning Council**: Zoning appeals and design reviews
+          (Archived = no longer on the agenda)
         - **Water Projects**: Infrastructure development projects
         - **Stormwater**: Construction notices and permits
-        - **DHEC**: Environmental permits and approvals
+        - **DHEC**: SC DES environmental permit public notices
         """)
 
 
