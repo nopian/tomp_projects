@@ -5264,6 +5264,28 @@
    "geometry": {
     "type": "Point",
     "coordinates": [
+     -79.76718721752874,
+     32.9033753569571
+    ]
+   },
+   "properties": {
+    "source": "stormwater",
+    "project_id": "596-08-00-160_8_18_2026_C26-08-022",
+    "name": "Darrell Creek Pool Club Improvements",
+    "description": "Stormwater construction project at 596-08-00-160",
+    "status": "Comment Period Open",
+    "address": "596-08-00-160",
+    "application_date": "2026-08-18",
+    "collection_date": "2026-08-19",
+    "url": "https://www.tompsc.com/DocumentCenter/View/55387/Darrell-Creek-Pool-Club-NOI-ePermitting",
+    "updated_at": "2026-08-19 06:44:31"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
      -79.75265554031918,
      32.904662931006904
     ]
