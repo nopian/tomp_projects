@@ -468,6 +468,28 @@
    "geometry": {
     "type": "Point",
     "coordinates": [
+     -79.78352040701266,
+     32.864945193607795
+    ]
+   },
+   "properties": {
+    "source": "dhec",
+    "project_id": "-6024901294581635082",
+    "name": "Market at Oakland Tobacco and Wine",
+    "description": "BCM - Coastal Zone Consistency — The Market at Oakland is a 0.35-acre site located in the Town of Mount Pleasant, Charleston County, South Carolina at the corner of Porch Swing Lane and South Morgans Point Road. This site is a phase of a larger common development plan within the Market at Oakland Planned Development. The project site is bounded to the west and south by an existing parking lot, to the east by South Morgans Point Road, and to the north by Porch Swing Lane. The project site is accessed via an existing private parking lot. The existing parking lot driveways will be used for access to the project.\n\nThis project will be a single commercial retail building. This building will be placed on an existing building pad area that was previously constructed during an earlier phase of the Market at Oakland. Parking, utilities, and stormwater systems already exist to support this project. Associated parking will be located between the two buildings, and drainage will be collected via piped systems which are routed to an existing pond. Stormwater for this project was accounted for in the Market at Oakland Stormwater Masterplan. 0.2 acres of land disturbance for Stormwater permit. No wetlands are onsite and no impacts proposed for the project.",
+    "status": "Public Notice - Application",
+    "address": "South Morgans Point Rd at Porch Swing Lane",
+    "application_date": "2026-09-30",
+    "collection_date": "2026-09-30",
+    "url": "https://epermitting.des.sc.gov/ext/nsite/default/map/results/detail/8257474831557072535/detail",
+    "updated_at": "2026-09-30 06:23:50"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
      -79.8181498307579,
      32.884932476692676
     ]
@@ -923,6 +945,28 @@
     "collection_date": "2025-12-13",
     "url": "https://epermitting.des.sc.gov/ext/nsite/default/map/results/detail/352395185/detail",
     "updated_at": "2026-07-12 13:43:42"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.873784,
+     32.782941
+    ]
+   },
+   "properties": {
+    "source": "dhec",
+    "project_id": "1805788204222488986",
+    "name": "Ferry Street Outfall",
+    "description": "BCM - Coastal Zone Consistency — The Town of Mount Pleasant proposes to address an ongoing maintenance issue at an existing stormwater outfall located at the southwest end of Ferry Street in the Old Village area of Mount Pleasant. The outfall serves the Edwards Park drainage basin, which encompasses approximately 131 acres and includes runoff from approximately 434 residential properties and three commercial properties. Stormwater from the basin is conveyed southward through a 48-inch reinforced concrete pipe (RCP) that discharges to an unnamed tributary of Charleston Harbor at the end of Ferry Street.\nThe proposed improvements include restoration of existing grades and replacement of riprap at the outfall. These measures are intended to stabilize the outfall and resolve recurring maintenance issues. Land disturbance associated with the project is limited to approximately 0.1 acre and will occur entirely within the existing public right-of-way for Stormwater permit. The project will not alter existing land use, drainage patterns, or the capacity of the stormwater system. 0.048 acres of jurisdictional wetland/critical area impacts",
+    "status": "Public Notice - Application",
+    "address": "205 Ferry Street",
+    "application_date": "2026-09-30",
+    "collection_date": "2026-09-30",
+    "url": "https://epermitting.des.sc.gov/ext/nsite/default/map/results/detail/8503574734421495780/detail",
+    "updated_at": "2026-09-30 06:23:50"
    }
   },
   {
